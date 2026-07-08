@@ -19,7 +19,31 @@ services:
       start_period: 5s
       timeout: 3s
     restart: unless-stopped
-
+  mc:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+    container_name: mc
+    networks:
+      - datalake_network
+    environment:
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+    entrypoint: |
+      /bin/sh -c "
+      until (/usr/bin/mc alias set minio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb minio/warehouse --ignore-existing;     
+      /usr/bin/mc mb minio/raw-data --ignore-existing;
+      tail -f /dev/null
+      "
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      retries: 3
+      start_period: 5s
+      timeout: 3s
+    depends_on:
+      - minio
+    restart: unless-stopped
+    
   spark-master:
     build:
       context: ./spark
@@ -28,17 +52,16 @@ services:
       - 8080:8080
       - 7077:7077
     volumes:
-      - ./spark/conf:/opt/spark/conf
       - ./spark/apps:/opt/spark/apps
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     hostname: spark-master
     networks:
       - datalake_network
     command:
       - /opt/spark/bin/spark-class
       - org.apache.spark.deploy.master.Master
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     restart: unless-stopped
 
   spark-worker-1:
@@ -47,8 +70,10 @@ services:
     container_name: spark-worker-1
     hostname: spark-worker-1
     volumes:
-      - ./spark/conf:/opt/spark/conf
       - ./spark/apps:/opt/spark/apps
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}    
     networks:
       - datalake_network
     command:
@@ -63,10 +88,12 @@ services:
     container_name: spark-worker-2
     hostname: spark-worker-2
     volumes:
-      - ./spark/conf:/opt/spark/conf
       - ./spark/apps:/opt/spark/apps
     networks:
       - datalake_network
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command:
       - /opt/spark/bin/spark-class
       - org.apache.spark.deploy.worker.Worker
@@ -79,8 +106,10 @@ services:
     container_name: spark-worker-3
     hostname: spark-worker-3
     volumes:
-      - ./spark/conf:/opt/spark/conf
       - ./spark/apps:/opt/spark/apps
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     networks:
       - datalake_network
     command:
@@ -99,10 +128,62 @@ services:
       - "8888:8888"
       - "4040:4040"
     volumes:
-      - ./jupyter/notebooks:/home/jovyan
-
+      - ./spark/conf:/opt/spark/conf
+      - ./jupyter/notebooks:/workspace
     networks:
       - datalake_network
+      
+  iceberg:
+    build:
+      context: ./iceberg
+      #dockerfile: ./iceberg
+    image: apache/iceberg-rest-fixture:1.11.0    
+    container_name: iceberg
+    depends_on:
+      - minio        
+      - postgres
+
+    ports:
+      - "8181:8181"      
+    networks:
+      - datalake_network
+    environment:
+      #- CLASSPATH=/usr/lib/iceberg-rest/lib/*:/usr/lib/iceberg-rest/iceberg-rest-adapter.jar
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO 
+      - CATALOG_S3_ENDPOINT=http://minio:9000     
+      - AWS_REGION=us-east-1
+      - CATALOG_S3_PATH_STYLE_ACCESS=true
+      - CATALOG_S3_PATH__STYLE__ACCESS=true
+      - CATALOG_URI=jdbc:postgresql://postgres:5432/iceberg
+      - CATALOG_JDBC_USER=${POSTGRE_ACEBERG_USER}
+      - CATALOG_JDBC_PASSWORD=${POSTGRE_ACEBERG_PASSWORD}
+    volumes:
+      - ./spark/jars:/usr/lib/iceberg-rest/lib
+    
+
+      
+  postgres:
+    image: postgres:16
+    container_name: postgre_iceberg
+    environment:
+      POSTGRES_USER: ${POSTGRE_ACEBERG_USER}
+      POSTGRES_PASSWORD: ${POSTGRE_ACEBERG_PASSWORD}
+      POSTGRES_DB: iceberg
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRE_ACEBERG_USER}", "-d", "iceberg"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    networks:
+      - datalake_network
+
+volumes:
+  postgres-data:
 
 networks:
   datalake_network:

@@ -53,6 +53,12 @@
             <artifactId>iceberg-aws</artifactId>
             <version>1.11.0</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.12</version>
+        </dependency>
     </dependencies>
 
     <build>
