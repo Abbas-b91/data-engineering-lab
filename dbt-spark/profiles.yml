@@ -1,0 +1,28 @@
+iceberg_demo:
+  target: dev
+
+  outputs:
+    dev:
+      type: spark
+      method: session
+
+      host: NA
+      schema: gold
+
+      server_side_parameters:
+        spark.master: spark://spark-master:7077
+
+        spark.sql.extensions: org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+
+        spark.sql.defaultCatalog: rest
+
+        spark.sql.catalog.rest: org.apache.iceberg.spark.SparkCatalog
+        spark.sql.catalog.rest.type: rest
+        spark.sql.catalog.rest.uri: http://iceberg:8181
+        spark.sql.catalog.rest.warehouse: s3://warehouse/
+
+        spark.sql.catalog.rest.io-impl: org.apache.iceberg.aws.s3.S3FileIO
+
+        spark.sql.catalog.rest.s3.endpoint: http://minio:9000
+        spark.sql.catalog.rest.s3.path-style-access: 'true'
+        spark.sql.catalog.rest.s3.region: us-east-1
