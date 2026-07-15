@@ -3,3 +3,4 @@ jupyter/notebooks/*
 minio/data/*
 spark/jars/*
 dbt-spark/project/*
+kafka_producer
