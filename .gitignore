@@ -2,3 +2,4 @@ jupyter/notebooks/*
 .env
 minio/data/*
 spark/jars/*
+dbt-spark/project/*
